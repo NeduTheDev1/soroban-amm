@@ -31,7 +31,7 @@ stellar contract invoke --id <POOL> -- get_info
 
 # Propose a fee change via governance
 stellar contract invoke --id <GOVERNANCE> --source <PROPOSER> \
-  - propose \
+  -- propose \
   --proposer <PROPOSER_ADDRESS> \
   --kind '{"UpdateFee": 20}'
 ```
@@ -49,22 +49,16 @@ Before calling `initialize`, verify:
 5. `protocol_fee_bps` is in `[0, fee_bps]`.
 6. The `fee_recipient` address is a multisig or a contract — not a single hot wallet.
 7. The `admin` address is a multisig or a governance contract for production deployments.
-8. The emergency delay (`EMERGENCY_DELAY_SECS`) is set to a value that gives LPs time to react (default 24 h, cap 7 days).
+8. The emergency delay is long enough for LPs to react (default 24 h, cap 7 days). To change it, initialize with `initialize_with_emergency_delay` instead of `initialize`.
 
-<!-- contract: factory -->
 ```sh
 # Initialize via factory (recommended)
 stellar contract invoke --id <FACTORY> --source <ADMIN> \
   -- create_pool \
-  --caller <CALLER_ADDRESS> \
   --token_a <TOKEN_A> \
   --token_b <TOKEN_B> \
-  --fee_tier 30 \
-  --governance_wasm_hash <GOVERNANCE_WASM_HASH>
-```
+  --fee_bps 30
 
-<!-- contract: amm -->
-```sh
 # Or manually
 stellar contract invoke --id <POOL> --source <ADMIN> \
   -- initialize \
@@ -89,7 +83,7 @@ The first deposit sets the pool price. Deposit tokens in the ratio that reflects
 Initial shares = sqrt(amount_a * amount_b)
 ```
 
-A seed of 1,000,000 XLM and 100,000 USDC yields `sqrt(1e6 * 1e5) ≈ 316,227" LP shares.
+A seed of 1,000,000 XLM and 100,000 USDC yields `sqrt(1e6 * 1e5) ≈ 316,227` LP shares.
 
 Set `min_shares = 0` only for the initial deposit. For all subsequent deposits, compute the expected shares off-chain and set a tight `min_shares`.
 
@@ -132,7 +126,7 @@ Use `remove_liquidity` for proportional withdrawal. Use `remove_liquidity_one_si
 ```sh
 # Proportional removal
 stellar contract invoke --id <POOL> --source <PROVIDER> \
-  - remove_liquidity \
+  -- remove_liquidity \
   --provider <PROVIDER_ADDRESS> \
   --shares <LP_AMOUNT> \
   --min_a 0 \
@@ -141,7 +135,7 @@ stellar contract invoke --id <POOL> --source <PROVIDER> \
 
 # Single-token exit (receives only token_a)
 stellar contract invoke --id <POOL> --source <PROVIDER> \
-  - remove_liquidity_one_sided \
+  -- remove_liquidity_one_sided \
   --provider <PROVIDER_ADDRESS> \
   --shares <LP_AMOUNT> \
   --token_out <TOKEN_A> \
@@ -157,7 +151,7 @@ Providing liquidity to an AMM pool exposes LPs to various risks, including imper
 
 ### 4.1 Impermanent Loss
 
-Impermanent loss occurs when the price of the deposited tokens changes relative to when they were deposited. The loss is "impermanent" because if the price returns to the original level, the loss is recovered. However, if the LP yithdraws at a different price, the loss becomes permanent.
+Impermanent loss occurs when the price of the deposited tokens changes relative to when they were deposited. The loss is "impermanent" because if the price returns to the original level, the loss is recovered. However, if the LP withdraws at a different price, the loss becomes permanent.
 
 The impermanent loss can be estimated using the formula:
 
@@ -217,7 +211,7 @@ stellar contract invoke --id <POOL> --source <CURRENT_ADMIN> \
 
 # Step 2: new admin accepts
 stellar contract invoke --id <POOL> --source <NEW_ADMIN> \
-  - accept_admin \
+  -- accept_admin \
   --new_admin <NEW_ADMIN_ADDRESS>
 ```
 
@@ -238,7 +232,7 @@ stellar contract invoke --id <POOL> -- shares_of --provider <YOUR_ADDRESS>
 
 # Propose a fee reduction from 30 to 20 bps
 stellar contract invoke --id <GOVERNANCE> --source <PROPOSER> \
-  - propose \
+  -- propose \
   --proposer <PROPOSER_ADDRESS> \
   --kind '{"UpdateFee": 20}'
 ```
@@ -247,17 +241,14 @@ stellar contract invoke --id <GOVERNANCE> --source <PROPOSER> \
 
 Voting power equals your LP token balance at the time you vote. Tokens are locked until the proposal resolves.
 
-<!-- contract: governance -->
 ```sh
 # Vote in favour
 stellar contract invoke --id <GOVERNANCE> --source <VOTER> \
   -- vote \
   --voter <VOTER_ADDRESS> \
   --proposal_id 1 \
-  --choice For
-```
+  --support true
 
-```sh
 # Check proposal status
 stellar contract invoke --id <GOVERNANCE> -- proposal_status --proposal_id 1
 ```
@@ -272,7 +263,7 @@ stellar contract invoke --id <GOVERNANCE> -- execute --proposal_id 1
 
 # Unlock your LP tokens
 stellar contract invoke --id <GOVERNANCE> --source <VOTER> \
-  - unlock_vote \
+  -- unlock_vote \
   --voter <VOTER_ADDRESS> \
   --proposal_id 1
 ```
@@ -298,7 +289,7 @@ To tune the circuit breaker for a more volatile pair:
 
 ```sh
 stellar contract invoke --id <POOL> --source <ADMIN> \
-  - set_circuit_breaker_config \
+  -- set_circuit_breaker_config \
   --threshold_bps 8000 \
   --cooldown_secs 300
 ```
@@ -315,7 +306,7 @@ stellar contract invoke --id <POOL> -- get_accrued_fees
 
 # Withdraw to fee_recipient
 stellar contract invoke --id <POOL> --source <FEE_RECIPIENT> \
-  - withdraw_protocol_fees
+  -- withdraw_protocol_fees
 ```
 
 Set up a periodic keeper job (e.g. a cron script calling the Stellar RPC) to withdraw fees regularly. Fees left in the pool do not compound — they sit idle until withdrawn.
@@ -332,19 +323,19 @@ Key metrics to monitor for a healthy pool:
 | Total shares | `get_info().total_shares` | Sudden drop > 20% in one block |
 | Accrued fees | `get_accrued_fees()` | Exceeds a configured USD threshold |
 | Paused state | `is_paused()` | Any `true` value |
+| Emergency announcement | `emergency_announce` event, `get_emergency_announcement()` | Any announcement |
 | Circuit breaker | `get_circuit_breaker_config().tripped` | Any `true` value |
 | TWAP vs spot | `price_ratio()` vs TWAP consumer | Deviation > 5% |
-| Emergency announcement | `emergency_withdrawal_announced` event | Any announcement |
-
 
 Subscribe to on-chain events for real-time alerts:
 
 | Event | Meaning |
 |---|---|
 | `circuit_break` | Pool auto-paused; investigate immediately |
-| `emergency_withdrawal_announced` | Admin announced a drain; LPs have `EMERGENCY_DELAZ_SECS` to react |
-| `emergency_withdrawal_cancelled` | Admin cancelled the announcement; no drain occurred |
-| `emergency_withdraw` | Admin drained reserves and accrued fees; critical incident |
+| `emergency_announce` | Admin announced a drain; LPs have the emergency delay (24 h by default) to react |
+| `emergency_cancel` | Admin cancelled the announcement; no drain occurred |
+| `emergency_wd` | Admin drained reserves and accrued fees; critical incident |
+| `ms_ew` | A multisig drained reserves and accrued fees; critical incident |
 | `admin_nominated` | Admin transfer initiated; verify it is expected |
 | `admin_changed` | Admin transfer completed |
 
@@ -352,85 +343,94 @@ Subscribe to on-chain events for real-time alerts:
 
 ## 10. Emergency Withdrawal
 
-The emergency path moves every reserve *and* accrued protocol fee out of the pool. It is guarded by three independent layers:
+The emergency path moves every reserve *and* every accrued protocol fee out of the pool and leaves it in a terminal `Drained` state. Three independent layers constrain it:
 
-1+�*Pause precondition.** The pool must be paused before an emergency withdrawal can execute. This prevents a compromised admin from draining a live pool without an observable signal.
-2.**Announced delay.** The admin must first call `announce_emergency_withdraw(to)`, which records `(to, announced_at)` and emits an event. `emergency_withdraw` only succeeds after `EMERGENCY_DELAY_SECS` (default 24 h, cap 7 days, configurable at initialize). The admin can cancel with `cancel_emergency_withdraw`, and a re-announce restarts the delay.
-3.**k-of-n multisig guard.** When `MultisigQuorum > 0`, the single-admin path is disabled. The guard itself can only be changed through the multisig flow (`propose_multisig_change` / `approve_multisig_change` / `exec_multisig_change`) — a single admin key cannot lower the quorum to 0 or install signers it controls. Multisig emergency withdrawals also obey the announced delay, measured from the moment quorum is reached.
+1. **Pause precondition.** The pool must be paused when the withdrawal executes (`Paused` error otherwise). A drain therefore always follows an observable `pause`.
+2. **Announced delay.** The admin first calls `announce_emergency_withdraw(admin, to)`, which records the recipient and the time and emits `emergency_announce`. `emergency_withdraw(admin, to)` only succeeds for that same recipient once the emergency delay has passed (24 h by default, at most 7 days, set with `initialize_with_emergency_delay`). `cancel_emergency_withdraw` clears the announcement, and announcing again restarts the delay.
+3. **k-of-n multisig guard.** While `MultisigQuorum > 0` the single-admin path is disabled (`Unauthorized`). The guard cannot be changed or disabled by the admin it constrains: `set_multisig` only installs the *initial* guard and returns `MultisigGuardActive` afterwards. Changing signers or quorum (including lowering the quorum to 0) goes through the multisig itself.
 
 **Single-admin flow:**
 
 ```sh
-# 1. Pause the pool (required)
-stellar contract invoke --id <POOL> --source <ADMIN> -- pause
-
-# 2. Announce the withdrawal (emits emergency_withdrawal_announced)
+# 1. Announce the withdrawal (emits emergency_announce)
 stellar contract invoke --id <POOL> --source <ADMIN> \
   -- announce_emergency_withdraw \
+  --admin <ADMIN_ADDRESS> \
   --to <RECIPIENT>
 
-# 3. Wait at least EMERGENCY_DELAY_SECS (default 24 h)
-
-# 4. Execute (reserves + accrued fees reach <RECIPIENT>)
-stellar contract invoke --id <POOL> --source <ADMIN> \
-  -- emergency_withdraw \
-  --to <RECIPIENT>
-
-# Optional: cancel before execution (emits emergency_withdrawal_cancelled)
-stellar contract invoke --id <POOL> --source <ADMIN> \
-  -- cancel_emergency_withdraw
-```
-
-**Multisig flow:**
-
-```sh
-# 1. Pause the pool
+# 2. Pause the pool (required before executing)
 stellar contract invoke --id <POOL> --source <ADMIN> -- pause
 
-# 2. Propose (records the proposal and its creation time)
-stellar contract invoke --id <POOL> --source <PROPOSER> \
-  -- propose_emergency_withdraw \
-  --proposer <PROPOSER_ADDRESS> \
+# 3. Wait out the emergency delay (default 24 h)
+
+# 4. Execute (reserves + accrued fees reach <RECIPIENT>; emits emergency_wd)
+stellar contract invoke --id <POOL> --source <ADMIN> \
+  -- emergency_withdraw \
+  --admin <ADMIN_ADDRESS> \
   --to <RECIPIENT>
 
-# 3. Collect quorum approvals
-	#    (the delay clock starts when quorum is reached)
-stellar contract invoke --id <POOL> --source <SIGNER> \
-  -- approve_emergency_withdraw \
-  --signer <SIGNER_ADDRESS>
-
-# 4. After EMERGENCY_DELAY_SECS since quorum was reached, execute
-stellar contract invoke --id <POOL> --source <SIGNER> \
-  -- exec_multisis_emergency_wd \
-  --signer <SIGNER_ADDRESS>
+# Optional: cancel before execution (emits emergency_cancel)
+stellar contract invoke --id <POOL> --source <ADMIN> \
+  -- cancel_emergency_withdraw \
+  --admin <ADMIN_ADDRESS>
 ```
 
-**Changing the guard:** While `MultisisQuorum > 0`, `set_multisi` rejects direct admin calls with `MustUseMultisig`. To change signers or quorum (including lowering to 0), use the multisig change flow:
+**Multisig flow.** Proposals are addressed by id; the proposer's approval is recorded automatically.
 
 ```sh
-stellar contract invoke --id <POOL> --source <PROPOSER> \
-  -- propose_multisig_change \
-  --proposer <PROPOSER_ADDRESS> \
-  --signers '["GADSCE", "GBRIEF", "GCHARF"]' \
-  --quorum 2
+# 1. Propose; the result is the proposal id
+stellar contract invoke --id <POOL> --source <SIGNER_1> \
+  -- propose_emergency_withdraw \
+  --signer <SIGNER_1_ADDRESS> \
+  --recipient <RECIPIENT>
 
-# Each signer approves, then any signer executes once quorum is reached
-stellar contract invoke --id <POOL> --source <SIGNER> \
-  -- approve_multisig_change \
-  --signer <SIGNER_ADDRESS>
+# 2. Other signers approve until the quorum is reached
+#    (the delay clock starts when the quorum is reached)
+stellar contract invoke --id <POOL> --source <SIGNER_2> \
+  -- approve_multisig_proposal \
+  --signer <SIGNER_2_ADDRESS> \
+  --proposal_id <ID>
 
-stellar contract invoke --id <POOL> --source <SIGNER> \
-  -- exec_multisig_change \
-  --signer <SIGNER_ADDRESS>
+# 3. Pause the pool
+stellar contract invoke --id <POOL> --source <ADMIN> -- pause
+
+# 4. Once the delay has passed since quorum, any signer executes
+stellar contract invoke --id <POOL> --source <SIGNER_1> \
+  -- exec_multisig_emergency_wd \
+  --signer <SIGNER_1_ADDRESS> \
+  --proposal_id <ID>
 ```
 
-**Validation rules:**
-- `to != env.current_contract_address` and `to != lp_token` (otherwise funds are stranded).
-- The pool must be paused at execution time.
-- The delay must have elapsed since the announcement (single-admin) or since quorum was reached (multisig).
-- Accrued protocol fees (`AccruedFeeA / `AccruedFeeB`) are swept to `to` along with the reserves.
+A proposal expires 7 days after it is created. Reaching the quorum extends that once so the delay cannot make it expire before it can run. Any change to the signer set invalidates proposals created under the old set (`ProposalExpired`).
 
-**Governance-originated calls** are subject to the same announcement and delay rules. Governance's own `EmergencyWithdraw` timelock is additive, not a substitute: the governance execution must call `announce_emergency_withdraw` and then wait out `EMERGENCY_DELAY_SECS` before calling `emergency_withdraw`.
+**Changing the guard:**
+
+```sh
+# Propose the new signer set and quorum (quorum 0 disables the guard)
+stellar contract invoke --id <POOL> --source <SIGNER_1> \
+  -- propose_set_multisig \
+  --signer <SIGNER_1_ADDRESS> \
+  --new_signers '["<SIGNER_A>", "<SIGNER_B>", "<SIGNER_C>"]' \
+  --new_quorum 2
+
+# Signers approve with approve_multisig_proposal, then any signer executes
+# once the current quorum is reached. No delay applies to this step.
+stellar contract invoke --id <POOL> --source <SIGNER_1> \
+  -- exec_multisig_set_multisig \
+  --signer <SIGNER_1_ADDRESS> \
+  --proposal_id <ID>
+```
+
+Read the current guard with `get_multisig` and a proposal with `get_multisig_proposal`.
+
+**Validation rules:**
+- `to` may not be the pool or its LP token (`InvalidRecipient`); otherwise funds would be stranded.
+- The pool must be paused at execution time (`Paused`).
+- The delay must have elapsed since the announcement (single-admin) or since quorum was reached (multisig); otherwise `EmergencyDelayNotElapsed`.
+- A signer set must be unique and `quorum <= signers.len()` (`InvalidQuorum`).
+- Accrued protocol fees are swept to `to` along with the reserves.
+
+**Governance.** A governance `EmergencyWithdraw` proposal runs through the same rules. Proposing it makes governance (the pool admin) announce the withdrawal, so the pool's delay runs alongside the voting period and timelock; executing it pauses the pool and then withdraws. Governance's own timelock is additive, not a substitute. Because proposing re-announces, a newer `EmergencyWithdraw` proposal replaces the announced recipient of an earlier one that has not executed yet.
 
 ---
 
@@ -442,4 +442,13 @@ Contract upgrades replace bytecode while preserving all storage. Follow this che
 2. Verify the hash matches the audited binary.
 3. Test on testnet with the same storage state.
 4. Create a governance proposal (`TransferAdmin` or direct `upgrade` call).
-5. After the timelock, execute the upgrade and re-verify pool invariants.
+5. After the timelock elapses, execute the upgrade.
+6. Verify `get_info()` returns expected values post-upgrade.
+
+```sh
+stellar contract invoke --id <POOL> --source <ADMIN> \
+  -- upgrade \
+  --new_wasm_hash <NEW_WASM_HASH>
+```
+
+Storage keys (`DataKey` variants) must not be renamed or reordered across upgrades — doing so constitutes a breaking change requiring a migration.
