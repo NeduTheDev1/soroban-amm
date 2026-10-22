@@ -706,14 +706,14 @@ rejection of a non-admin caller.
 ### 6.1 Pausing a pool
 
 ```sh
-# Anyone with admin auth can pause — halts swaps, add/remove liquidity, flash loans
-stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- pause --admin $ADMIN_ADDRESS
+# The stored admin authorizes the call; pause takes no contract arguments.
+stellar contract invoke --id $AMM_POOL_CONTRACT_ID --network $NETWORK --source $ADMIN_KEY -- pause
 # Check:
 stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- is_paused
 # -> true
 
 # Resume:
-stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- unpause --admin $ADMIN_ADDRESS
+stellar contract invoke --id $AMM_POOL_CONTRACT_ID --network $NETWORK --source $ADMIN_KEY -- unpause
 ```
 
 The CL pool has the same `pause`/`unpause` interface. Factory pools can be
@@ -746,7 +746,7 @@ stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- try_circuit_breaker_recove
 # -> true if cooldown elapsed and pool was tripped; reverts otherwise
 
 # Admin can also unpause directly without waiting (governance review path):
-stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- unpause --admin $ADMIN_ADDRESS
+stellar contract invoke --id $AMM_POOL_CONTRACT_ID --network $NETWORK --source $ADMIN_KEY -- unpause
 
 # Tune threshold/cooldown (admin-only):
 stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- set_circuit_breaker_config --threshold_bps 3000 --cooldown_secs 1800
@@ -805,18 +805,24 @@ manipulated fees while the root cause is investigated.
 ## 7. Admin Key Management
 
 Every contract uses a **two-step `propose_admin` / `accept_admin`** rotation —
-there is no single-transaction admin steal. The pattern is identical across
-`token`, `amm`, `factory`, `oracle_aggregator`, `batch_auction`, etc.
+there is no single-transaction admin steal. The `propose_admin` argument is
+named `admin` on factory, staking, concentrated-liquidity, and reserve-manager
+contracts, and `current_admin` on AMM and governance contracts.
 
 ### 7.1 Rotation procedure
 
 ```sh
-# 1. Current admin nominates the new admin
-stellar contract invoke --id $CONTRACT_ID -- propose_admin --current_admin $OLD --new_admin $NEW
+# 1. Current admin nominates the new admin (AMM/governance pools)
+# contract: amm
+stellar contract invoke --id $CONTRACT_ID --source $OLD_KEY -- propose_admin --current_admin $OLD --new_admin $NEW
+
+# Factory, staking, concentrated-liquidity, and reserve-manager contracts use `admin` instead
+# contract: factory
+stellar contract invoke --id $CONTRACT_ID --source $OLD_KEY -- propose_admin --admin $OLD --new_admin $NEW
 
 # 2. New admin must accept from its own key (require_auth on $NEW)
-stellar contract invoke --id $CONTRACT_ID -- accept_admin --new_admin $NEW \
-  --source $NEW_KEY
+# contract: amm
+stellar contract invoke --id $CONTRACT_ID --source $NEW_KEY -- accept_admin --new_admin $NEW
 
 # Verify:
 stellar contract invoke --id $CONTRACT_ID -- admin   # or get_admin / get_info
@@ -844,8 +850,10 @@ for ((offset = 0; offset < count; offset += page)); do
     -- get_pools --offset "$offset" --limit "$page" | grep -Eo 'C[A-Z0-9]{55}')
   for pool in $pools; do
     echo "Rotating $pool"
-    stellar contract invoke --id $pool -- propose_admin --current_admin $OLD --new_admin $NEW --source $OLD
-    stellar contract invoke --id $pool -- accept_admin --new_admin $NEW --source $NEW
+    # contract: amm
+    stellar contract invoke --id $pool --source $OLD_KEY -- propose_admin --current_admin $OLD --new_admin $NEW
+    # contract: amm
+    stellar contract invoke --id $pool --source $NEW_KEY -- accept_admin --new_admin $NEW
   done
 done
 ```

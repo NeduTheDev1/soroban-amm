@@ -2,11 +2,11 @@
 # .github/workflows/ci.yml — that workflow is the source of truth; keep this
 # file in sync with it rather than the other way around.
 
-WASM_DIR := target/wasm32v1none/release
+WASM_DIR := target/wasm32v1-none/release
 
 SHELL := bash
 
-.PHONY: all help build release-build optimize abi check-abi test-abi test test-all fmt lint lint-js check-node-versions check check-docs check-branch-protection check-branch-protection-remote check-storage-keys check-deploy-scripts \
+.PHONY: all help build release-build optimize abi check-abi test-abi check-doc-commands test-doc-commands test test-all fmt lint lint-js check-node-versions check check-docs check-branch-protection check-branch-protection-remote check-storage-keys check-deploy-scripts \
         size size-check doc audit bench deploy e2e clean fuzz-amm fuzz-amm-nightly fuzz-cl
 
 # Bare `make` explains itself instead of building.
@@ -46,6 +46,12 @@ check-abi: build ## Verify docs/abi.json matches committed contract WASM interfa
 
 test-abi: ## Run ABI generator/checker script tests
 	node --test scripts/check_abi.test.mjs
+
+check-doc-commands: build ## Verify documented contract invokes against built WASM interfaces
+	node scripts/check_doc_commands.mjs $(WASM_DIR)
+
+test-doc-commands: ## Run fixture tests for the documentation command checker
+	node --test scripts/check_doc_commands.test.mjs
 
 test: build ## Build, then run the full workspace test suite
 	cargo test --workspace
