@@ -541,8 +541,9 @@ stellar contract invoke \
   --caller <YOUR_ADDRESS> \
   --token_a <TOKEN_A_CONTRACT_ID> \
   --token_b <TOKEN_B_CONTRACT_ID> \
-  --fee_tier 30 \
+  --fee_tier 2 \
   --governance_wasm_hash <GOVERNANCE_WASM_HASH>
+# fee_tier 0-3 maps to 1, 5, 30 and 100 bps; 2 is the 0.30% default
 # → prints the new POOL_CONTRACT_ID
 ```
 
@@ -629,6 +630,7 @@ stellar contract invoke \
 
 ### Swap Tokens
 
+<!-- contract: amm -->
 ```sh
 stellar contract invoke \
   --id <AMM_CONTRACT_ID> \
@@ -683,6 +685,7 @@ The AMM exposes cumulative price state with `get_price_cumulative()`. The exampl
 1. Deploy `twap_consumer.wasm`.
 2. Save a snapshot (for example every minute):
 
+<!-- contract: twap_consumer -->
 ```sh
 stellar contract invoke \
   --id <TWAP_CONSUMER_CONTRACT_ID> \

@@ -455,6 +455,7 @@ stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- get_info
 #        fee_bps == 30, protocol_fee_bps == 0, admin is governance or ADMIN_ADDRESS
 
 # 3. LP token admin is the pool
+# contract: token
 stellar contract invoke --id $LP_TOKEN_CONTRACT_ID -- admin
 # Must equal $AMM_POOL_CONTRACT_ID
 
@@ -470,9 +471,11 @@ stellar contract invoke --id $LP_TOKEN_CONTRACT_ID -- locker
 # Must equal $GOVERNANCE_CONTRACT_ID
 
 # 7. Oracle aggregator admin
+# contract: oracle_aggregator
 stellar contract invoke --id $ORACLE_AGGREGATOR_CONTRACT_ID -- get_admin
 
 # 8. TWAP consumer keeper
+# contract: twap_consumer
 stellar contract invoke --id $TWAP_CONSUMER_CONTRACT_ID -- get_keeper
 
 # 9. Staking pool info
@@ -561,6 +564,7 @@ stellar contract upload --wasm target/wasm32v1-none/release/amm.wasm --network $
 # -> NEW_HASH=abc123...
 
 # 2. Upgrade the live contract (admin auth required)
+# contract: amm
 stellar contract invoke --id $AMM_POOL_CONTRACT_ID --network $NETWORK --source $ADMIN_ADDRESS -- upgrade --new_wasm_hash $NEW_HASH
 
 # 3. Verify upgrade took — read back liveness and a known getter
@@ -576,6 +580,7 @@ For the **factory**, the upgrade path is:
 
 ```sh
 # Upgrade factory bytecode itself
+# contract: factory
 stellar contract invoke --id $FACTORY_CONTRACT_ID -- upgrade --new_wasm_hash $NEW_HASH
 # Update future-pool WASM hashes (existing pools unaffected):
 stellar contract invoke --id $FACTORY_CONTRACT_ID -- update_wasm_hashes --amm_wasm_hash $NEW_AMM_HASH --token_wasm_hash $NEW_TOKEN_HASH
@@ -588,6 +593,7 @@ hash. Keep the previous hash in `.soroban-amm.deploy.env` history or in git
 tags:
 
 ```sh
+# contract: factory
 stellar contract invoke --id $FACTORY_CONTRACT_ID -- upgrade --new_wasm_hash $PREVIOUS_HASH
 ```
 
@@ -713,6 +719,7 @@ stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- is_paused
 # -> true
 
 # Resume:
+# contract: amm
 stellar contract invoke --id $AMM_POOL_CONTRACT_ID --network $NETWORK --source $ADMIN_KEY -- unpause
 ```
 
@@ -746,6 +753,7 @@ stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- try_circuit_breaker_recove
 # -> true if cooldown elapsed and pool was tripped; reverts otherwise
 
 # Admin can also unpause directly without waiting (governance review path):
+# contract: amm
 stellar contract invoke --id $AMM_POOL_CONTRACT_ID --network $NETWORK --source $ADMIN_KEY -- unpause
 
 # Tune threshold/cooldown (admin-only):
@@ -762,18 +770,19 @@ single-admin `emergency_withdraw` path is **disabled** — funds can only be
 moved via the multisig flow:
 
 ```sh
-# 1. A signer proposes the recipient
+# 1. A signer proposes the recipient; the call returns the proposal id
 stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- propose_emergency_withdraw --signer $SIGNER_A --recipient $SAFE_ADDRESS
+# -> PROPOSAL_ID
 
-# 2. Other signers approve the same recipient (each calls the same function — approvals accumulate)
-stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- propose_emergency_withdraw --signer $SIGNER_B --recipient $SAFE_ADDRESS
+# 2. Other signers approve that proposal by id (the proposer's approval counts already)
+stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- approve_multisig_proposal --signer $SIGNER_B --proposal_id $PROPOSAL_ID
 # ... until approvals >= quorum
 
 # 3. Any signer executes once quorum is reached and before expiry (7 days)
-stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- exec_multisig_emergency_wd --signer $SIGNER_A
+stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- exec_multisig_emergency_wd --signer $SIGNER_A --proposal_id $PROPOSAL_ID
 
 # 4. Verify
-stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- get_multisig_proposal
+stellar contract invoke --id $AMM_POOL_CONTRACT_ID -- get_multisig_proposal --proposal_id $PROPOSAL_ID
 # Reserves are zeroed; TotalShares reset; MinLiquidityLocked cleared so deposits can resume
 ```
 
@@ -824,8 +833,9 @@ stellar contract invoke --id $CONTRACT_ID --source $OLD_KEY -- propose_admin --a
 # contract: amm
 stellar contract invoke --id $CONTRACT_ID --source $NEW_KEY -- accept_admin --new_admin $NEW
 
-# Verify:
-stellar contract invoke --id $CONTRACT_ID -- admin   # or get_admin / get_info
+# Verify (the getter is `admin` on token and cl_position_nft, `get_admin` on most others, `get_info` on the AMM):
+# contract: token
+stellar contract invoke --id $CONTRACT_ID -- admin
 ```
 
 If step 2 is not completed, the nomination sits as `PendingAdmin` and the old

@@ -45,6 +45,7 @@ A snapshot must be saved at `now - window_seconds` before calling `get_twap_pric
 
 ```sh
 # Save a snapshot every 60 seconds
+# contract: twap_consumer
 stellar contract invoke \
   --id <TWAP_CONSUMER_CONTRACT_ID> \
   --source <KEEPER_KEY> \

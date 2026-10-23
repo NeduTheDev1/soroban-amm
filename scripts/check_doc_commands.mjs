@@ -189,12 +189,13 @@ function parseInvocation(text) {
     if (invokeIndex < 0) return null;
     const delimiterIndex = tokens.indexOf('--', invokeIndex + 1);
     if (delimiterIndex < 0 || !tokens[delimiterIndex + 1]) return null;
-    const functionName = tokens[delimiterIndex + 1].replace(/^--/, '');
+    // `$(stellar ... -- fn)` leaves the closing parenthesis (or `;`, `|`) glued to the token.
+    const functionName = tokens[delimiterIndex + 1].replace(/^--/, '').replace(/[);|&]+$/, '');
     const flagsBefore = [];
     const flagsAfter = [];
     const collect = (slice, target) => {
         for (let index = 0; index < slice.length; index += 1) {
-            if (/^--[\w-]+$/.test(slice[index])) target.push(slice[index].replaceAll('-', '_'));
+            if (/^--[\w-]+$/.test(slice[index])) target.push(slice[index].slice(2).replaceAll('-', '_'));
         }
     };
     const preDelimiter = tokens.slice(invokeIndex + 1, delimiterIndex);
