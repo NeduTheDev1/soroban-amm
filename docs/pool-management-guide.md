@@ -59,8 +59,10 @@ stellar contract invoke --id <FACTORY> --source <ADMIN> \
   --caller <ADMIN_ADDRESS> \
   --token_a <TOKEN_A> \
   --token_b <TOKEN_B> \
-  --fee_tier 2
-# fee_tier 0-3 maps to 1, 5, 30 and 100 bps; --governance_wasm_hash is optional
+  --fee_tier 2 \
+  --governance_wasm_hash <GOVERNANCE_WASM_HASH>
+# fee_tier 0-3 maps to 1, 5, 30 and 100 bps. The governance hash is an Option: pass
+# `null` to create a pool without a governance contract.
 
 # Or manually
 stellar contract invoke --id <POOL> --source <ADMIN> \
